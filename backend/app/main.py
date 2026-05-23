@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,12 +6,16 @@ from sqlalchemy.future import select
 from datetime import timedelta
 from typing import Optional, List
 import uuid
+import asyncio
+import json
 
 from app.config import settings
 from app.database import get_db
 from app.models import User, Product, Order, OrderItem, DeliveryTracking
 from app.schemas import UserCreate, UserResponse, UserLogin, TokenResponse, ProductResponse, OrderCreate, OrderResponse
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
+from app.websocket import manager
+from app.tracking import simulate_delivery
 
 # Initialize high-performance FastAPI server
 app = FastAPI(
@@ -262,6 +266,17 @@ async def create_order(
     
     await db.commit()
     
+    # 4.5. Trigger background real-time rider simulation task
+    asyncio.create_task(
+        simulate_delivery(
+            order_id=new_order.id,
+            start_lat=settings.BAKERY_LAT,
+            start_lng=settings.BAKERY_LNG,
+            end_lat=order_in.destination_lat,
+            end_lng=order_in.destination_lng
+        )
+    )
+    
     # 5. Fetch fully loaded order response with relationships using selectinload
     result = await db.execute(
         select(Order)
@@ -326,5 +341,25 @@ async def get_order_details(
         )
         
     return order
+
+
+@app.websocket("/ws/track/{order_id}")
+async def websocket_endpoint(websocket: WebSocket, order_id: str):
+    """
+    WebSocket endpoint for real-time order delivery tracking.
+    Enables mobile frontend to subscribe and receive instant GPS coordinate streams.
+    """
+    await manager.connect(order_id, websocket)
+    try:
+        while True:
+            # Keep socket alive and respond to any heartbeat pings
+            data = await websocket.receive_text()
+            await websocket.send_text(json.dumps({"type": "pong", "message": "alive"}))
+    except WebSocketDisconnect:
+        manager.disconnect(order_id, websocket)
+    except Exception as e:
+        print(f"WebSocket tracking error: {e}")
+        manager.disconnect(order_id, websocket)
+
 
 
