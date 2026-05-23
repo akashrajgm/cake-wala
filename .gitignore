@@ -8,6 +8,7 @@ ENV/
 env/
 .env
 .pytest_cache/
+*.db
 
 # Node / Frontend
 node_modules/
