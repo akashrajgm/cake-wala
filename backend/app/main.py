@@ -4,11 +4,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from datetime import timedelta
+from typing import Optional, List
+import uuid
 
 from app.config import settings
 from app.database import get_db
-from app.models import User
-from app.schemas import UserCreate, UserResponse, UserLogin, TokenResponse
+from app.models import User, Product
+from app.schemas import UserCreate, UserResponse, UserLogin, TokenResponse, ProductResponse
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
 
 # Initialize high-performance FastAPI server
@@ -136,3 +138,48 @@ async def get_me(current_user: User = Depends(get_current_user)):
     Get secure profile details of the currently logged-in user.
     """
     return current_user
+
+
+# --- MODULE 3: PRODUCT CATALOG ROUTERS ---
+
+@app.get("/products", response_model=list[ProductResponse], tags=["Catalog"])
+async def get_products(category: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """
+    Retrieve all products. 
+    Supports optional filtering by category (e.g., Cakes, Pastries, Breads, Cookies).
+    """
+    query = select(Product).where(Product.is_available == True)
+    if category:
+        query = query.where(Product.category == category)
+        
+    result = await db.execute(query)
+    products = result.scalars().all()
+    return products
+
+
+@app.get("/products/categories", response_model=list[str], tags=["Catalog"])
+async def get_categories(db: AsyncSession = Depends(get_db)):
+    """
+    Get all unique active product categories to build dynamic frontend filters.
+    """
+    result = await db.execute(select(Product.category).distinct().where(Product.is_available == True))
+    categories = result.scalars().all()
+    return categories
+
+
+@app.get("/products/{product_id}", response_model=ProductResponse, tags=["Catalog"])
+async def get_product(product_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """
+    Retrieve details of a single product SKU by its UUID.
+    """
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalars().first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product SKU not found."
+        )
+        
+    return product
+
