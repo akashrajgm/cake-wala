@@ -37,7 +37,8 @@ export default function TrackOrder({ orderId, onBackToStore }) {
   useEffect(() => {
     if (!orderId) return;
 
-    const wsUri = `ws://localhost:8000/ws/track/${orderId}`;
+    const baseApiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    const wsUri = baseApiUrl.replace(/^http/, "ws") + `/ws/track/${orderId}`;
     console.log(`Connecting to Delivery stream: ${wsUri}`);
     
     const ws = new WebSocket(wsUri);

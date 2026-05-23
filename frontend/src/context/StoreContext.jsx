@@ -5,7 +5,7 @@ const StoreContext = createContext();
 export const useStore = () => useContext(StoreContext);
 
 export const StoreProvider = ({ children }) => {
-  const API_URL = "http://localhost:8000";
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
   
   // Core States
   const [products, setProducts] = useState([]);

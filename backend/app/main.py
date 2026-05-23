@@ -31,6 +31,40 @@ app = FastAPI(
     version="1.0.0"
 )
 
+@app.on_event("startup")
+async def on_startup():
+    from app.database import Base, engine, async_session_maker
+    from app.models import Product, User
+    from app.seed import SEEDED_PRODUCTS
+    
+    # Create tables if they do not exist
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        
+    # Seed default products if catalog is empty
+    async with async_session_maker() as session:
+        result = await session.execute(select(Product))
+        existing_products = result.scalars().all()
+        if not existing_products:
+            print("Database empty. Seeding default premium bakery products...")
+            for prod_data in SEEDED_PRODUCTS:
+                new_prod = Product(**prod_data)
+                session.add(new_prod)
+                
+            # Seed admin user if not exists
+            admin_result = await session.execute(select(User).where(User.phone == "+919988776655"))
+            admin_user = admin_result.scalars().first()
+            if not admin_user:
+                admin_user = User(
+                    phone="+919988776655",
+                    full_name="Chef Bakery Admin",
+                    email="admin@cakewala.com",
+                    is_admin=True
+                )
+                session.add(admin_user)
+            await session.commit()
+            print("Startup database seeding complete.")
+
 # Configure CORS Middleware
 # Essential to allow our Vite frontend (usually http://localhost:5173) to securely communicate with the API
 app.add_middleware(
