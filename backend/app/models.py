@@ -9,10 +9,11 @@ class User(Base):
     __tablename__ = "users"
     
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(20), unique=True, index=True, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    phone: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(255))
     hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -39,6 +40,8 @@ class Order(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(50), default="pending", index=True)  # pending, preparing, dispatched, delivered, cancelled
     total_price: Mapped[float] = mapped_column(Numeric(10, 2))
+    payment_method: Mapped[str] = mapped_column(String(50), default="COD")         # COD, UPI
+    payment_status: Mapped[str] = mapped_column(String(50), default="pending")     # pending, completed
     delivery_address: Mapped[str] = mapped_column(String(512))
     destination_lat: Mapped[float] = mapped_column(Float)
     destination_lng: Mapped[float] = mapped_column(Float)

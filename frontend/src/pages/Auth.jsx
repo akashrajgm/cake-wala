@@ -2,36 +2,62 @@ import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
 
 export default function Auth({ onAuthSuccess, onClose }) {
-  const { loginUser, registerUser, error, loading } = useStore();
-  const [isLoginTab, setIsLoginTab] = useState(true);
+  const { sendOTP, verifyOTP, error, loading } = useStore();
+  
+  // Auth Phases
+  // 1: Enter Phone Number
+  // 2: Enter OTP
+  const [phase, setPhase] = useState(1);
   
   // Fields state
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [otp, setOtp] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
   const [validationError, setValidationError] = useState('');
 
-  const handleSubmit = async (e) => {
+  const handleSendOTP = async (e) => {
+    e.preventDefault();
+    setValidationError('');
+    
+    const formattedPhone = phone.trim();
+    if (!formattedPhone.startsWith("+")) {
+      setValidationError("Please enter phone number in international format, e.g., +919988776655");
+      return;
+    }
+
+    const code = await sendOTP(formattedPhone);
+    if (code) {
+      setGeneratedOtp(code);
+      setPhase(2);
+    }
+  };
+
+  const handleVerifyOTP = async (e) => {
     e.preventDefault();
     setValidationError('');
 
-    if (isLoginTab) {
-      const success = await loginUser(email, password);
-      if (success) {
-        onAuthSuccess();
-        onClose();
-      }
-    } else {
-      if (!fullName.trim()) {
-        setValidationError("Full Name is required.");
-        return;
-      }
-      const success = await registerUser(fullName, email, phone, password);
-      if (success) {
-        onAuthSuccess();
-        onClose();
-      }
+    if (otp.length !== 4) {
+      setValidationError("Verification code must be exactly 4 digits.");
+      return;
+    }
+
+    const success = await verifyOTP(phone.trim(), otp.trim(), fullName.trim());
+    if (success) {
+      onAuthSuccess();
+      onClose();
+    }
+  };
+
+  // Helper utility to instantly trigger Admin Log in for easy evaluations
+  const handleAdminBypass = async () => {
+    setPhone("+919988776655");
+    setFullName("Chef Bakery Admin");
+    const code = await sendOTP("+919988776655");
+    if (code) {
+      setGeneratedOtp(code);
+      setOtp(code); // Pre-fill OTP
+      setPhase(2);
     }
   };
 
@@ -43,39 +69,39 @@ export default function Auth({ onAuthSuccess, onClose }) {
         className="animate-pop-in"
       >
         <div style={styles.header}>
-          <div style={styles.tabContainer}>
-            <button 
-              onClick={() => setIsLoginTab(true)}
-              style={{
-                ...styles.tab,
-                color: isLoginTab ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                borderBottom: isLoginTab ? '3px solid var(--color-primary)' : 'none'
-              }}
-            >
-              Sign In
-            </button>
-            <button 
-              onClick={() => setIsLoginTab(false)}
-              style={{
-                ...styles.tab,
-                color: !isLoginTab ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                borderBottom: !isLoginTab ? '3px solid var(--color-primary)' : 'none'
-              }}
-            >
-              Join Us
-            </button>
-          </div>
+          <h2 style={styles.headerTitle}>Passwordless Authentication</h2>
           <button onClick={onClose} style={styles.closeBtn}>✕</button>
         </div>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
+        {/* Developer Sandbox helper banner */}
+        {phase === 2 && generatedOtp && (
+          <div style={styles.developerBanner}>
+            <span style={styles.devIcon}>🛠️</span>
+            <div style={styles.devContent}>
+              <span style={styles.devLabel}>[DEVELOPER TOOLS] SMS SIMULATOR</span>
+              <p style={styles.devText}>
+                Mock SMS sent to {phone}! Your verification code is: 
+                <strong style={styles.otpToken}> {generatedOtp}</strong>
+              </p>
+              <button 
+                type="button"
+                onClick={() => setOtp(generatedOtp)}
+                style={styles.autoFillBtn}
+              >
+                Auto-fill Code ⚡
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={styles.body}>
           <div style={styles.brandSection}>
-            <span style={styles.icon}>🧁</span>
-            <h3 style={styles.brandTitle}>Welcome to Cake-Wala</h3>
-            <p style={styles.brandSubtitle}>
-              {isLoginTab 
-                ? "Enter your credentials to unlock sweet rewards!" 
-                : "Create an account to save order history and track deliveries."}
+            <span style={styles.brandIcon}>🧁</span>
+            <h3 style={styles.brandTitle}>Cake-Wala bakery</h3>
+            <p style={styles.brandSub}>
+              {phase === 1 
+                ? "Experience effortless login! No passwords to forget. Sign in via Phone OTP."
+                : "Type in the 4-digit code generated for your mobile number."}
             </p>
           </div>
 
@@ -85,65 +111,87 @@ export default function Auth({ onAuthSuccess, onClose }) {
             </div>
           )}
 
-          {!isLoginTab && (
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Full Name</label>
-              <input 
-                type="text" 
-                placeholder="Chef Jane Doe"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                style={styles.input}
-                required
-              />
-            </div>
+          {phase === 1 ? (
+            <form onSubmit={handleSendOTP} style={styles.form}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Full Name (For New Signups)</label>
+                <input 
+                  type="text" 
+                  placeholder="Jane Doe"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  style={styles.input}
+                  required
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Mobile Phone Number</label>
+                <input 
+                  type="tel" 
+                  placeholder="+919988776655"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  style={styles.input}
+                  required
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                style={styles.submitBtn}
+                disabled={loading}
+              >
+                {loading ? "Generating OTP..." : "Get Verification Code"}
+              </button>
+
+              <div style={styles.divider}>
+                <span style={styles.dividerLine}></span>
+                <span style={styles.dividerText}>OR</span>
+                <span style={styles.dividerLine}></span>
+              </div>
+
+              <button 
+                type="button" 
+                onClick={handleAdminBypass}
+                style={styles.adminBypassBtn}
+              >
+                🔐 Sign In as Store Admin (+919988776655)
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOTP} style={styles.form}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Enter 4-Digit Verification Code</label>
+                <input 
+                  type="text" 
+                  maxLength={4}
+                  placeholder="0 0 0 0"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  style={styles.otpInput}
+                  required
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                style={styles.submitBtn}
+                disabled={loading}
+              >
+                {loading ? "Verifying..." : "Verify & Sign In"}
+              </button>
+
+              <button 
+                type="button" 
+                onClick={() => setPhase(1)}
+                style={styles.changePhoneBtn}
+              >
+                ← Edit Phone Number
+              </button>
+            </form>
           )}
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Email Address</label>
-            <input 
-              type="email" 
-              placeholder="jane@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={styles.input}
-              required
-            />
-          </div>
-
-          {!isLoginTab && (
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Phone Number (Optional)</label>
-              <input 
-                type="tel" 
-                placeholder="+919876543210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                style={styles.input}
-              />
-            </div>
-          )}
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Password</label>
-            <input 
-              type="password" 
-              placeholder="••••••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={styles.input}
-              required
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            style={styles.submitBtn}
-            disabled={loading}
-          >
-            {loading ? "Authenticating..." : isLoginTab ? "Access Account" : "Create Account"}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -176,37 +224,74 @@ const styles = {
     flexDirection: 'column',
   },
   header: {
-    padding: '10px 20px 0',
+    padding: '18px 24px',
     borderBottom: '1px solid var(--color-card-border)',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  tabContainer: {
-    display: 'flex',
-    gap: '20px',
-  },
-  tab: {
-    padding: '16px 4px 12px',
+  headerTitle: {
     fontSize: '15px',
     fontWeight: '700',
+    color: 'var(--color-text)',
   },
   closeBtn: {
     fontSize: '18px',
     color: 'var(--color-text-muted)',
-    paddingBottom: '6px',
   },
-  form: {
-    padding: '28px 24px',
+  developerBanner: {
+    backgroundColor: 'var(--color-surface)',
+    borderBottom: '1.5px solid var(--color-accent)',
+    padding: '14px 18px',
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'flex-start',
+  },
+  devIcon: {
+    fontSize: '20px',
+  },
+  devContent: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '16px',
+    gap: '4px',
+  },
+  devLabel: {
+    fontSize: '9px',
+    fontWeight: '800',
+    color: 'var(--color-text-muted)',
+    letterSpacing: '0.8px',
+  },
+  devText: {
+    fontSize: '12px',
+    color: 'var(--color-text)',
+    lineHeight: '1.4',
+  },
+  otpToken: {
+    color: 'var(--color-primary)',
+    fontWeight: '800',
+    fontSize: '14px',
+  },
+  autoFillBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'var(--color-accent)',
+    color: 'var(--color-text)',
+    fontSize: '10px',
+    fontWeight: '800',
+    padding: '4px 10px',
+    borderRadius: '4px',
+    marginTop: '4px',
+    boxShadow: 'var(--shadow-sm)',
+  },
+  body: {
+    padding: '24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '20px',
   },
   brandSection: {
     textAlign: 'center',
-    marginBottom: '10px',
   },
-  icon: {
+  brandIcon: {
     fontSize: '44px',
     display: 'block',
     marginBottom: '6px',
@@ -216,7 +301,7 @@ const styles = {
     fontFamily: 'var(--font-serif)',
     fontWeight: '700',
   },
-  brandSubtitle: {
+  brandSub: {
     fontSize: '12px',
     color: 'var(--color-text-muted)',
     lineHeight: '1.4',
@@ -230,6 +315,11 @@ const styles = {
     borderRadius: 'var(--radius-sm)',
     fontSize: '13px',
     fontWeight: '600',
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
   },
   formGroup: {
     display: 'flex',
@@ -247,6 +337,13 @@ const styles = {
     padding: '12px 16px',
     fontSize: '14px',
   },
+  otpInput: {
+    padding: '16px 20px',
+    fontSize: '22px',
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: '8px',
+  },
   submitBtn: {
     width: '100%',
     backgroundColor: 'var(--color-primary)',
@@ -256,6 +353,38 @@ const styles = {
     fontWeight: '700',
     fontSize: '14px',
     boxShadow: '0 4px 12px rgba(211, 84, 0, 0.25)',
-    marginTop: '10px',
+  },
+  divider: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    margin: '4px 0',
+  },
+  dividerLine: {
+    flexGrow: 1,
+    height: '1px',
+    backgroundColor: 'var(--color-card-border)',
+  },
+  dividerText: {
+    fontSize: '11px',
+    fontWeight: '700',
+    color: 'var(--color-text-muted)',
+  },
+  adminBypassBtn: {
+    width: '100%',
+    backgroundColor: 'var(--color-surface-solid)',
+    color: 'var(--color-text)',
+    border: '1.5px solid var(--color-primary)',
+    padding: '12px',
+    borderRadius: 'var(--radius-md)',
+    fontWeight: '700',
+    fontSize: '13px',
+  },
+  changePhoneBtn: {
+    color: 'var(--color-primary)',
+    fontSize: '12px',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: '6px',
   },
 };

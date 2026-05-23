@@ -119,55 +119,50 @@ export const StoreProvider = ({ children }) => {
     return Object.values(cart).reduce((count, item) => count + item.quantity, 0);
   };
 
-  // --- AUTHENTICATION APIS ---
-  const loginUser = async (email, password) => {
+  // --- PASSWORDLESS PHONE OTP APIS ---
+  const sendOTP = async (phone) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const res = await fetch(`${API_URL}/auth/otp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ phone })
       });
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || "Authentication failed.");
+        throw new Error(data.detail || "Failed to generate OTP.");
       }
       
-      setToken(data.access_token);
-      setUser(data.user);
-      return true;
+      // Returns the OTP generated so our PWA can display it in sandbox mode!
+      return data.otp;
     } catch (err) {
       setError(err.message);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }
   };
 
-  const registerUser = async (fullName, email, phone, password) => {
+  const verifyOTP = async (phone, otp, fullName = null) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/auth/register`, {
+      const res = await fetch(`${API_URL}/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: fullName,
-          email,
-          phone,
-          password
-        })
+        body: JSON.stringify({ phone, otp, full_name: fullName })
       });
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || "Registration failed.");
+        throw new Error(data.detail || "Invalid OTP code.");
       }
       
-      // Auto login after registration
-      return await loginUser(email, password);
+      setToken(data.access_token);
+      setUser(data.user);
+      return true;
     } catch (err) {
       setError(err.message);
       return false;
@@ -185,7 +180,7 @@ export const StoreProvider = ({ children }) => {
   };
 
   // --- ORDER APIS ---
-  const placeOrder = async (deliveryAddress, destLat, destLng) => {
+  const placeOrder = async (deliveryAddress, destLat, destLng, paymentMethod = "COD", paymentStatus = "pending") => {
     if (!token) {
       setError("Please sign in to place an order.");
       return null;
@@ -210,7 +205,9 @@ export const StoreProvider = ({ children }) => {
           items: itemsPayload,
           delivery_address: deliveryAddress,
           destination_lat: destLat,
-          destination_lng: destLng
+          destination_lng: destLng,
+          payment_method: paymentMethod,
+          payment_status: paymentStatus
         })
       });
       
@@ -257,6 +254,84 @@ export const StoreProvider = ({ children }) => {
     }
   };
 
+  // --- UPGRADES: ADMIN CORE REST CALLS ---
+  
+  const fetchAdminAnalytics = async () => {
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_URL}/admin/analytics`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to load admin analytics.");
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.error(err.message);
+      return null;
+    }
+  };
+
+  const adminAddProduct = async (productData) => {
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_URL}/admin/products`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(productData)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to create product SKU.");
+      await fetchProducts(); // Refresh storefront products catalog
+      return data;
+    } catch (err) {
+      console.error(err.message);
+      return null;
+    }
+  };
+
+  const adminUpdateProduct = async (productId, productData) => {
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_URL}/admin/products/${productId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(productData)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to update product SKU.");
+      await fetchProducts(); // Refresh storefront products catalog
+      return data;
+    } catch (err) {
+      console.error(err.message);
+      return null;
+    }
+  };
+
+  const adminDeleteProduct = async (productId) => {
+    if (!token) return false;
+    try {
+      const res = await fetch(`${API_URL}/admin/products/${productId}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || "Failed to delete product SKU.");
+      }
+      await fetchProducts(); // Refresh storefront products catalog
+      return true;
+    } catch (err) {
+      console.error(err.message);
+      return false;
+    }
+  };
+
   // Auto-run core fetches
   useEffect(() => {
     fetchProducts();
@@ -284,12 +359,16 @@ export const StoreProvider = ({ children }) => {
       clearCart,
       getCartTotal,
       getCartCount,
-      loginUser,
-      registerUser,
+      sendOTP,
+      verifyOTP,
       logoutUser,
       placeOrder,
       fetchMyOrders,
-      fetchOrderDetails
+      fetchOrderDetails,
+      fetchAdminAnalytics,
+      adminAddProduct,
+      adminUpdateProduct,
+      adminDeleteProduct
     }}>
       {children}
     </StoreContext.Provider>

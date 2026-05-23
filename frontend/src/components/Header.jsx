@@ -1,7 +1,7 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext';
 
-export default function Header({ onCartClick, onAuthClick, onHistoryClick }) {
+export default function Header({ onCartClick, onAuthClick, onHistoryClick, onAdminClick }) {
   const { user, logoutUser, getCartCount } = useStore();
   const cartCount = getCartCount();
 
@@ -16,6 +16,16 @@ export default function Header({ onCartClick, onAuthClick, onHistoryClick }) {
         <div style={styles.navActions}>
           {user ? (
             <div style={styles.userSection}>
+              {user.is_admin && (
+                <button 
+                  onClick={onAdminClick} 
+                  style={styles.adminBtn} 
+                  title="Admin Dashboard"
+                >
+                  👑
+                </button>
+              )}
+              
               <button 
                 onClick={onHistoryClick} 
                 style={styles.historyBtn} 
@@ -23,9 +33,11 @@ export default function Header({ onCartClick, onAuthClick, onHistoryClick }) {
               >
                 📜
               </button>
+              
               <div style={styles.avatar} title={user.full_name}>
                 {user.full_name.charAt(0).toUpperCase()}
               </div>
+              
               <button onClick={logoutUser} style={styles.logoutBtn} title="Sign Out">
                 🚪
               </button>
@@ -92,6 +104,11 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
+  },
+  adminBtn: {
+    fontSize: '18px',
+    padding: '6px',
+    animation: 'pulseSteam 2s ease-in-out infinite',
   },
   historyBtn: {
     fontSize: '18px',

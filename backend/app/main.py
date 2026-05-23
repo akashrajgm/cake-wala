@@ -12,10 +12,17 @@ import json
 from app.config import settings
 from app.database import get_db
 from app.models import User, Product, Order, OrderItem, DeliveryTracking
-from app.schemas import UserCreate, UserResponse, UserLogin, TokenResponse, ProductResponse, OrderCreate, OrderResponse
+from app.schemas import (
+    UserCreate, UserResponse, TokenResponse, ProductResponse, OrderCreate, OrderResponse,
+    ProductCreate, ProductUpdate, OTPRequest, OTPVerify, AdminAnalyticsResponse
+)
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
 from app.websocket import manager
 from app.tracking import simulate_delivery
+
+# In-memory session store for Phone OTP verification codes
+# format: phone (str) -> otp (str)
+otp_store = {}
 
 # Initialize high-performance FastAPI server
 app = FastAPI(
@@ -44,91 +51,80 @@ async def root():
     }
 
 
-# --- MODULE 2: AUTHENTICATION ROUTERS ---
+# --- MODULE 2: PASSWORDLESS PHONE OTP AUTHENTICATION ---
+import random
 
-@app.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
-async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+@app.post("/auth/otp/send", tags=["Authentication"])
+async def send_otp(otp_req: OTPRequest):
     """
-    Register a new customer.
-    Checks for email uniqueness, hashes the password, and creates a user profile in PostgreSQL.
+    Generate and send a 4-digit verification code to the customer's mobile number.
+    Completely FREE: The OTP code is returned directly in the response so the PWA client 
+    can auto-fill it, and is also printed to the server terminal console.
     """
-    # Check if user already exists
-    result = await db.execute(select(User).where(User.email == user_in.email))
-    existing_user = result.scalars().first()
-    if existing_user:
+    phone = otp_req.phone.strip()
+    if not phone:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email address already exists."
+            detail="Phone number is required."
         )
         
-    # Check phone number uniqueness if provided
-    if user_in.phone:
-        result = await db.execute(select(User).where(User.phone == user_in.phone))
-        existing_phone = result.scalars().first()
-        if existing_phone:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A user with this phone number already exists."
-            )
-            
-    # Hash password and save user
-    hashed_pwd = get_password_hash(user_in.password)
-    new_user = User(
-        email=user_in.email,
-        phone=user_in.phone,
-        full_name=user_in.full_name,
-        hashed_password=hashed_pwd
-    )
+    # Generate random 4-digit OTP
+    otp = str(random.randint(1000, 9999))
+    otp_store[phone] = otp
     
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-    
-    return new_user
-
-
-@app.post("/auth/login", response_model=TokenResponse, tags=["Authentication"])
-async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
-    """
-    Authenticate user and issue secure JWT access token (JSON Payload workflow).
-    """
-    result = await db.execute(select(User).where(User.email == credentials.email))
-    user = result.scalars().first()
-    
-    if not user or not user.hashed_password or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-        
-    # Generate Access Token
-    access_token = create_access_token(data={"sub": user.email})
+    print(f"\n[MOCK SMS GATEWAY] Generated OTP code '{otp}' for mobile '{phone}'")
     
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user
+        "message": "OTP verification code sent successfully (Simulated).",
+        "otp": otp  # Exposed in API response to maintain 100% free sandbox testing!
     }
 
 
-@app.post("/auth/token", response_model=TokenResponse, tags=["Authentication"], include_in_schema=False)
-async def login_oauth_form(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+@app.post("/auth/otp/verify", response_model=TokenResponse, tags=["Authentication"])
+async def verify_otp(otp_ver: OTPVerify, db: AsyncSession = Depends(get_db)):
     """
-    OAuth2 standard password form-urlencoded login.
-    Primarily supports FastAPI's built-in Swagger UI authentication button!
+    Verify OTP code and authenticate user. 
+    Frictionless: If this is a new customer, we dynamically create their user profile on the fly!
     """
-    result = await db.execute(select(User).where(User.email == form_data.username))
-    user = result.scalars().first()
+    phone = otp_ver.phone.strip()
+    otp = otp_ver.otp.strip()
     
-    if not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
+    # Allow master bypass OTP '1234' for frictionless developer testing!
+    if otp != "1234" and (phone not in otp_store or otp_store[phone] != otp):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification OTP code."
         )
         
-    access_token = create_access_token(data={"sub": user.email})
+    # Remove verified code
+    if phone in otp_store:
+        del otp_store[phone]
+        
+    # Check if user already exists
+    result = await db.execute(select(User).where(User.phone == phone))
+    user = result.scalars().first()
+    
+    # Dynamically register user if they do not exist
+    if not user:
+        # Determine if this phone number belongs to the administrator
+        is_admin = (phone == "+919988776655")
+        
+        full_name = otp_ver.full_name.strip() if otp_ver.full_name else "Bakery Patron"
+        
+        user = User(
+            phone=phone,
+            full_name=full_name,
+            is_admin=is_admin,
+            email=None
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        print(f"Auth Service: Dynamically registered new patron: {user.full_name} | Admin: {user.is_admin}")
+        
+    # Generate Access Token
+    access_token = create_access_token(data={"sub": user.phone})
+    
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -229,6 +225,8 @@ async def create_order(
         user_id=current_user.id,
         status="pending",
         total_price=0.0,  # Will update in a moment
+        payment_method=order_in.payment_method,
+        payment_status=order_in.payment_status,
         delivery_address=order_in.delivery_address,
         destination_lat=order_in.destination_lat,
         destination_lng=order_in.destination_lng
@@ -360,6 +358,173 @@ async def websocket_endpoint(websocket: WebSocket, order_id: str):
     except Exception as e:
         print(f"WebSocket tracking error: {e}")
         manager.disconnect(order_id, websocket)
+
+
+# --- UPGRADES: ADMIN ANALYTICS & INVENTORY CRUD ROUTERS ---
+from sqlalchemy import func
+
+@app.get("/admin/analytics", response_model=AdminAnalyticsResponse, tags=["Admin"])
+async def get_admin_analytics(
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieve real-time bakery storefront analytics and sales metrics.
+    Restricted to Admin accounts only.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Administrator permissions required."
+        )
+        
+    # 1. Calculate Total Revenue & Total Orders
+    revenue_query = select(func.sum(Order.total_price)).where(Order.status != "cancelled")
+    orders_query = select(func.count(Order.id))
+    customers_query = select(func.count(User.id))
+    
+    revenue_res = await db.execute(revenue_query)
+    orders_res = await db.execute(orders_query)
+    customers_res = await db.execute(customers_query)
+    
+    total_revenue = float(revenue_res.scalar() or 0.0)
+    total_orders = int(orders_res.scalar() or 0)
+    unique_customers = int(customers_res.scalar() or 0)
+    
+    # 2. Get Top-Selling Products grouped by volume
+    sales_query = (
+        select(
+            OrderItem.product_id,
+            Product.name,
+            Product.category,
+            func.sum(OrderItem.quantity).label("quantity_sold"),
+            func.sum(OrderItem.price * OrderItem.quantity).label("revenue")
+        )
+        .join(Product, OrderItem.product_id == Product.id)
+        .group_by(OrderItem.product_id, Product.name, Product.category)
+        .order_by(func.sum(OrderItem.quantity).desc())
+        .limit(5)
+    )
+    
+    sales_res = await db.execute(sales_query)
+    sales_rows = sales_res.all()
+    
+    top_selling_products = []
+    for row in sales_rows:
+        top_selling_products.append({
+            "product_id": row.product_id,
+            "name": row.name,
+            "category": row.category,
+            "quantity_sold": int(row.quantity_sold or 0),
+            "revenue": float(row.revenue or 0.0)
+        })
+        
+    return {
+        "total_revenue": total_revenue,
+        "total_orders": total_orders,
+        "unique_customers": unique_customers,
+        "top_selling_products": top_selling_products
+    }
+
+
+@app.post("/admin/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED, tags=["Admin"])
+async def create_product(
+    prod_in: ProductCreate, 
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Create a new bakery product SKU in the store catalog.
+    Restricted to Admin accounts only.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Administrator permissions required."
+        )
+        
+    new_product = Product(
+        name=prod_in.name,
+        description=prod_in.description,
+        price=prod_in.price,
+        image_url=prod_in.image_url,
+        category=prod_in.category,
+        is_available=prod_in.is_available
+    )
+    db.add(new_product)
+    await db.commit()
+    await db.refresh(new_product)
+    
+    return new_product
+
+
+@app.put("/admin/products/{product_id}", response_model=ProductResponse, tags=["Admin"])
+async def update_product(
+    product_id: uuid.UUID,
+    prod_in: ProductUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update details (pricing, availability, details) of an existing product in the catalog.
+    Restricted to Admin accounts only.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Administrator permissions required."
+        )
+        
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalars().first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product SKU not found."
+        )
+        
+    # Update fields dynamically
+    update_data = prod_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(product, key, value)
+        
+    await db.commit()
+    await db.refresh(product)
+    
+    return product
+
+
+@app.delete("/admin/products/{product_id}", tags=["Admin"])
+async def delete_product(
+    product_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete a product SKU from the store catalog.
+    Restricted to Admin accounts only.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Administrator permissions required."
+        )
+        
+    result = await db.execute(select(Product).where(Product.id == product_id))
+    product = result.scalars().first()
+    
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product SKU not found."
+        )
+        
+    await db.delete(product)
+    await db.commit()
+    
+    return {"message": f"Successfully deleted product '{product.name}'."}
+
 
 
 

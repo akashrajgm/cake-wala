@@ -12,6 +12,11 @@ export default function CartModal({ isOpen, onClose, onAuthClick, onOrderSuccess
   const { cart, updateCartQuantity, removeFromCart, getCartTotal, user, token, placeOrder, loading } = useStore();
   const [selectedLandmark, setSelectedLandmark] = useState(0);
   const [customAddress, setCustomAddress] = useState(PRESET_LANDMARKS[0].address);
+  const [paymentMethod, setPaymentMethod] = useState("COD"); // COD, UPI
+  
+  // Simulated PhonePe Overlay Drawer states
+  const [showPhonePe, setShowPhonePe] = useState(false);
+  const [payingPhonePe, setPayingPhonePe] = useState(false);
 
   if (!isOpen) return null;
 
@@ -23,20 +28,40 @@ export default function CartModal({ isOpen, onClose, onAuthClick, onOrderSuccess
     setCustomAddress(PRESET_LANDMARKS[index].address);
   };
 
-  const handleCheckout = async (e) => {
+  const handleCheckoutSubmit = async (e) => {
     e.preventDefault();
     if (!user) {
       onAuthClick();
       return;
     }
-    
-    const landmark = PRESET_LANDMARKS[selectedLandmark];
-    const order = await placeOrder(customAddress, landmark.lat, landmark.lng);
-    
-    if (order) {
-      onOrderSuccess();
-      onClose();
+
+    if (paymentMethod === "UPI") {
+      setShowPhonePe(true);
+    } else {
+      // Cash on Delivery Checkout
+      const landmark = PRESET_LANDMARKS[selectedLandmark];
+      const order = await placeOrder(customAddress, landmark.lat, landmark.lng, "COD", "pending");
+      if (order) {
+        onOrderSuccess();
+        onClose();
+      }
     }
+  };
+
+  const handlePhonePePayment = async () => {
+    setPayingPhonePe(true);
+    // Simulate transaction authorization delay of 1.5 seconds
+    setTimeout(async () => {
+      const landmark = PRESET_LANDMARKS[selectedLandmark];
+      const order = await placeOrder(customAddress, landmark.lat, landmark.lng, "UPI", "completed");
+      setPayingPhonePe(false);
+      setShowPhonePe(false);
+      
+      if (order) {
+        onOrderSuccess();
+        onClose();
+      }
+    }, 1500);
   };
 
   return (
@@ -46,6 +71,60 @@ export default function CartModal({ isOpen, onClose, onAuthClick, onOrderSuccess
         onClick={(e) => e.stopPropagation()} 
         className="animate-pop-in"
       >
+        {/* Elegant PhonePe UPI Overlay Portal */}
+        {showPhonePe && (
+          <div style={styles.phonePeOverlay} className="animate-slide-up">
+            <div style={styles.phonePeHeader}>
+              <button onClick={() => setShowPhonePe(false)} style={styles.phonePeBack}>← Back</button>
+              <h3 style={styles.phonePeTitle}>📱 PhonePe Secure</h3>
+            </div>
+            
+            <div style={styles.phonePeBody}>
+              <div style={styles.phonePeMerchant}>
+                <span style={styles.merchantIcon}>🍰</span>
+                <div>
+                  <h4 style={styles.merchantName}>Cake-Wala Bakery Store</h4>
+                  <p style={styles.merchantSub}>Secure UPI Payment Merchant</p>
+                </div>
+              </div>
+
+              <div style={styles.amountBanner}>
+                <span style={styles.amountLabel}>AMOUNT TO PAY</span>
+                <h1 style={styles.amountValue}>₹{total}</h1>
+              </div>
+
+              {/* Secure QR Code simulation */}
+              <div style={styles.qrContainer}>
+                <div style={styles.qrCodePlaceholder}>
+                  {/* Clean SVG visual QR Mockup */}
+                  <svg width="140" height="140" viewBox="0 0 100 100" style={{ opacity: 0.8 }}>
+                    <path d="M5 5h30v30H5zm10 10h10v10H15zm50-10h30v30H65zm10 10h10v10H75zM5 65h30v30H5zm10 10h10v10H15zm55 5h10v10H70zm15-15h10v10H85zm-15-15h10v10H70zm15 0h10v10H85z" fill="var(--color-text)" />
+                    <rect x="42" y="42" width="16" height="16" fill="var(--color-primary)" rx="2" />
+                  </svg>
+                  <span style={styles.qrText}>Scan QR Code with any UPI App</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={handlePhonePePayment} 
+                style={styles.phonePeSubmit}
+                disabled={payingPhonePe}
+              >
+                {payingPhonePe ? (
+                  <div style={styles.phonePeLoading}>
+                    <div style={styles.smallSpinner}></div>
+                    <span>Authorizing UPI Pay...</span>
+                  </div>
+                ) : (
+                  `Pay ₹${total} via PhonePe Simulator ⚡`
+                )}
+              </button>
+              
+              <p style={styles.phonePeSecurityLabel}>🔒 256-bit bank grade encryption sandbox</p>
+            </div>
+          </div>
+        )}
+
         <div style={styles.header}>
           <h2 style={styles.title}>Your Bakery Cart 🥐</h2>
           <button onClick={onClose} style={styles.closeBtn}>✕</button>
@@ -111,7 +190,7 @@ export default function CartModal({ isOpen, onClose, onAuthClick, onOrderSuccess
                 <button onClick={onAuthClick} style={styles.checkoutSubmit}>Sign In & Checkout</button>
               </div>
             ) : (
-              <form onSubmit={handleCheckout} style={styles.checkoutForm}>
+              <form onSubmit={handleCheckoutSubmit} style={styles.checkoutForm}>
                 <h3 style={styles.sectionTitle}>Delivery Directions 🏍️</h3>
                 
                 <div style={styles.formGroup}>
@@ -140,12 +219,42 @@ export default function CartModal({ isOpen, onClose, onAuthClick, onOrderSuccess
                   />
                 </div>
 
+                {/* Highly aesthetic Payment method tabs bar */}
+                <h3 style={styles.sectionTitle}>Select Payment Method 💳</h3>
+                <div style={styles.paymentTabs}>
+                  <button 
+                    type="button"
+                    onClick={() => setPaymentMethod("COD")}
+                    style={{
+                      ...styles.paymentTab,
+                      borderColor: paymentMethod === "COD" ? 'var(--color-primary)' : 'var(--color-card-border)',
+                      backgroundColor: paymentMethod === "COD" ? 'rgba(211, 84, 0, 0.05)' : 'white',
+                    }}
+                  >
+                    <span style={styles.paymentIcon}>💵</span>
+                    <span style={styles.paymentLabelText}>Cash On Delivery</span>
+                  </button>
+                  
+                  <button 
+                    type="button"
+                    onClick={() => setPaymentMethod("UPI")}
+                    style={{
+                      ...styles.paymentTab,
+                      borderColor: paymentMethod === "UPI" ? 'var(--color-primary)' : 'var(--color-card-border)',
+                      backgroundColor: paymentMethod === "UPI" ? 'rgba(211, 84, 0, 0.05)' : 'white',
+                    }}
+                  >
+                    <span style={styles.paymentIcon}>📱</span>
+                    <span style={styles.paymentLabelText}>UPI / PhonePe</span>
+                  </button>
+                </div>
+
                 <button 
                   type="submit" 
                   style={styles.checkoutSubmit}
                   disabled={loading}
                 >
-                  {loading ? "Placing Order..." : "Place Bakery Order & Track Live"}
+                  {loading ? "Placing Order..." : paymentMethod === "UPI" ? "Proceed to UPI Payment" : "Place COD Order & Track"}
                 </button>
               </form>
             )}
@@ -178,6 +287,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflowY: 'auto',
+    position: 'relative',
   },
   header: {
     padding: '24px',
@@ -321,11 +431,12 @@ const styles = {
     marginTop: '10px',
   },
   sectionTitle: {
-    fontSize: '16px',
+    fontSize: '15px',
     fontWeight: '700',
     color: 'var(--color-text)',
     borderBottom: '1.5px solid var(--color-card-border)',
     paddingBottom: '6px',
+    marginTop: '6px',
   },
   formGroup: {
     display: 'flex',
@@ -333,7 +444,7 @@ const styles = {
     gap: '6px',
   },
   label: {
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: '700',
     color: 'var(--color-text-muted)',
   },
@@ -349,6 +460,29 @@ const styles = {
     borderRadius: 'var(--radius-sm)',
     resize: 'none',
   },
+  paymentTabs: {
+    display: 'flex',
+    gap: '12px',
+  },
+  paymentTab: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '14px',
+    borderRadius: 'var(--radius-md)',
+    border: '1.5px solid var(--color-card-border)',
+    transition: 'all var(--transition-fast)',
+  },
+  paymentIcon: {
+    fontSize: '22px',
+  },
+  paymentLabelText: {
+    fontSize: '11px',
+    fontWeight: '700',
+    color: 'var(--color-text)',
+  },
   checkoutSubmit: {
     width: '100%',
     backgroundColor: 'var(--color-primary)',
@@ -359,5 +493,136 @@ const styles = {
     fontSize: '15px',
     boxShadow: '0 6px 14px rgba(211, 84, 0, 0.2)',
     textAlign: 'center',
+  },
+  
+  /* --- PHONEPE OVERLAY DRAWER STYLES --- */
+  phonePeOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'var(--color-bg)',
+    zIndex: 1050,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  phonePeHeader: {
+    padding: '18px 24px',
+    borderBottom: '1px solid var(--color-card-border)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    backgroundColor: '#673AB7', /* PhonePe Purple */
+    color: 'white',
+  },
+  phonePeBack: {
+    fontSize: '14px',
+    fontWeight: '700',
+    color: 'white',
+  },
+  phonePeTitle: {
+    fontSize: '16px',
+    fontWeight: '700',
+    fontFamily: 'var(--font-sans)',
+  },
+  phonePeBody: {
+    padding: '24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '24px',
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  phonePeMerchant: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    backgroundColor: 'rgba(103, 58, 183, 0.05)',
+    padding: '14px',
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid rgba(103, 58, 183, 0.1)',
+  },
+  merchantIcon: {
+    fontSize: '28px',
+  },
+  merchantName: {
+    fontSize: '14px',
+    fontWeight: '700',
+    color: 'var(--color-text)',
+  },
+  merchantSub: {
+    fontSize: '11px',
+    color: 'var(--color-text-muted)',
+  },
+  amountBanner: {
+    textAlign: 'center',
+    backgroundColor: 'var(--color-surface-solid)',
+    border: '1.5px solid var(--color-card-border)',
+    padding: '18px',
+    borderRadius: 'var(--radius-md)',
+  },
+  amountLabel: {
+    fontSize: '10px',
+    fontWeight: '800',
+    color: 'var(--color-text-muted)',
+    letterSpacing: '0.5px',
+  },
+  amountValue: {
+    fontSize: '32px',
+    fontWeight: '800',
+    color: '#673AB7',
+    marginTop: '4px',
+  },
+  qrContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrCodePlaceholder: {
+    backgroundColor: 'white',
+    padding: '16px',
+    borderRadius: 'var(--radius-md)',
+    border: '1.5px solid var(--color-card-border)',
+    boxShadow: 'var(--shadow-sm)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  qrText: {
+    fontSize: '11px',
+    color: 'var(--color-text-muted)',
+    fontWeight: '700',
+  },
+  phonePeSubmit: {
+    backgroundColor: '#673AB7', /* PhonePe Purple */
+    color: 'white',
+    width: '100%',
+    padding: '16px',
+    borderRadius: 'var(--radius-md)',
+    fontSize: '15px',
+    fontWeight: '700',
+    boxShadow: '0 6px 16px rgba(103, 58, 183, 0.35)',
+  },
+  phonePeLoading: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  smallSpinner: {
+    width: '16px',
+    height: '16px',
+    border: '2px solid rgba(255, 255, 255, 0.2)',
+    borderTop: '2px solid white',
+    borderRadius: '50%',
+    animation: 'pulseSteam 1s linear infinite',
+  },
+  phonePeSecurityLabel: {
+    textAlign: 'center',
+    fontSize: '10px',
+    color: 'var(--color-text-muted)',
+    fontWeight: '600',
   },
 };

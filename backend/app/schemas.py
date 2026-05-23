@@ -1,19 +1,20 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 
 # --- USER SCHEMAS ---
 class UserBase(BaseModel):
-    email: EmailStr
+    email: Optional[EmailStr] = None
     full_name: str
-    phone: Optional[str] = None
+    phone: str = Field(..., description="Mobile phone number is mandatory for passwordless OTP auth")
 
 class UserCreate(UserBase):
-    password: str
+    password: Optional[str] = None
 
 class UserResponse(UserBase):
     id: uuid.UUID
+    is_admin: bool
     created_at: datetime
 
     class Config:
@@ -28,16 +29,38 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user: UserResponse
 
+# Passwordless OTP Schemas
+class OTPRequest(BaseModel):
+    phone: str = Field(..., description="Phone number to send OTP to")
+
+class OTPVerify(BaseModel):
+    phone: str = Field(..., description="Phone number being verified")
+    otp: str = Field(..., description="4-digit OTP code")
+    full_name: Optional[str] = Field(None, description="Provided for dynamic profile creation if user is new")
+
 
 # --- PRODUCT SCHEMAS ---
-class ProductResponse(BaseModel):
+class ProductBase(BaseModel):
+    name: str = Field(..., min_length=2)
+    description: str = Field(..., min_length=10)
+    price: float = Field(..., gt=0)
+    image_url: str = Field(..., min_length=10)
+    category: str = Field(..., min_length=2)
+    is_available: bool = True
+
+class ProductCreate(ProductBase):
+    pass
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    image_url: Optional[str] = None
+    category: Optional[str] = None
+    is_available: Optional[bool] = None
+
+class ProductResponse(ProductBase):
     id: uuid.UUID
-    name: str
-    description: str
-    price: float
-    image_url: str
-    category: str
-    is_available: bool
 
     class Config:
         from_attributes = True
@@ -78,12 +101,16 @@ class OrderCreate(BaseModel):
     delivery_address: str = Field(min_length=5, description="Full delivery address is required")
     destination_lat: float = Field(..., description="Destination latitude is required")
     destination_lng: float = Field(..., description="Destination longitude is required")
+    payment_method: str = Field("COD", description="COD or UPI")
+    payment_status: str = Field("pending", description="pending or completed")
 
 class OrderResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     status: str
     total_price: float
+    payment_method: str
+    payment_status: str
     delivery_address: str
     destination_lat: float
     destination_lng: float
@@ -93,3 +120,18 @@ class OrderResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- ADMIN ANALYTICS SCHEMAS ---
+class DynamicProductSales(BaseModel):
+    product_id: uuid.UUID
+    name: str
+    category: str
+    quantity_sold: int
+    revenue: float
+
+class AdminAnalyticsResponse(BaseModel):
+    total_revenue: float
+    total_orders: int
+    unique_customers: int
+    top_selling_products: List[DynamicProductSales]

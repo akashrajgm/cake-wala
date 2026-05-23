@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.future import select
 from app.config import settings
 from app.database import Base, async_session_maker
-from app.models import Product
+from app.models import Product, User
 
 # Core product seed list containing 12 premium bakery SKUs
 SEEDED_PRODUCTS = [
@@ -138,8 +138,21 @@ async def seed_db():
             session.add(new_prod)
             print(f" -> Added product: {new_prod.name} | Category: {new_prod.category}")
             
+        # Seed default Admin User
+        result = await session.execute(select(User).where(User.phone == "+919988776655"))
+        admin_user = result.scalars().first()
+        if not admin_user:
+            admin_user = User(
+                phone="+919988776655",
+                full_name="Chef Bakery Admin",
+                email="admin@cakewala.com",
+                is_admin=True
+            )
+            session.add(admin_user)
+            print(" -> Seeded default Admin User: Chef Bakery Admin (+919988776655)")
+            
         await session.commit()
-        print("\nSuccessfully seeded 12 premium bakery products into PostgreSQL!")
+        print("\nSuccessfully seeded 12 premium bakery products and Admin User!")
         
     await engine.dispose()
 

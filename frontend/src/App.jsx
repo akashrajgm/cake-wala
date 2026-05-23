@@ -6,13 +6,14 @@ import Home from './pages/Home';
 import Auth from './pages/Auth';
 import TrackOrder from './pages/TrackOrder';
 import OrderHistory from './pages/OrderHistory';
+import Admin from './pages/Admin';
 import './index.css';
 
 function MainApp() {
   const { activeOrder, setActiveOrder, token, user } = useStore();
   
   // Navigation states
-  const [screen, setScreen] = useState("home"); // home, history, track
+  const [screen, setScreen] = useState("home"); // home, history, track, admin
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   
   // Modal states
@@ -46,6 +47,7 @@ function MainApp() {
         onCartClick={() => setIsCartOpen(true)}
         onAuthClick={() => setIsAuthOpen(true)}
         onHistoryClick={() => setScreen("history")}
+        onAdminClick={() => setScreen("admin")}
       />
 
       {/* Screen Routing Grid */}
@@ -66,6 +68,12 @@ function MainApp() {
               setActiveOrder(null);
               setScreen("home");
             }}
+          />
+        )}
+
+        {screen === "admin" && (
+          <Admin 
+            onBackToStore={() => setScreen("home")}
           />
         )}
       </main>
