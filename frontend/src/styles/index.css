@@ -1,0 +1,120 @@
+@import './variables.css';
+
+/* Global Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(44, 27, 24, 0.1);
+  border-radius: var(--radius-sm);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(44, 27, 24, 0.25);
+}
+
+/* Central Mobile Viewport Container - Desktop centering, native mobile stretching */
+.app-container {
+  max-width: 480px;
+  min-height: 100vh;
+  margin: 0 auto;
+  background-color: var(--color-bg);
+  box-shadow: 0 0 60px rgba(44, 27, 24, 0.06);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  padding-bottom: 84px; /* Space for elegant floating bottom navigation menu */
+}
+
+/* Global Micro-Animations */
+@keyframes slideUp {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulseSteam {
+  0% {
+    transform: scale(0.96);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.65;
+  }
+  100% {
+    transform: scale(0.96);
+    opacity: 0.3;
+  }
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp var(--transition-smooth) forwards;
+}
+
+.animate-pop-in {
+  animation: popIn var(--transition-spring) forwards;
+}
+
+/* Beautiful custom button resets */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+input, textarea, select {
+  font-family: var(--font-sans);
+  border: 1.5px solid rgba(44, 27, 24, 0.1);
+  background-color: var(--color-surface-solid);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  font-size: 15px;
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-primary);
+}
+
+/* Navigation Utilities */
+.nav-shadow {
+  box-shadow: 0 -4px 20px rgba(44, 27, 24, 0.05);
+}

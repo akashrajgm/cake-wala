@@ -1,0 +1,66 @@
+/* Import elegant, high-end Google typography */
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Outfit:wght@100..900&display=swap');
+
+:root {
+  /* --- COLOR PSYCHOLOGY SYSTEM --- */
+  --color-bg: #FCFBF7;          /* Almond Cream: Warm, premium, organic patisserie canvas */
+  --color-primary: #D35400;     /* Warm Terracotta: High appetite arousal, organic heat, rich finish */
+  --color-primary-hover: #A04000;
+  --color-accent: #E1B12C;      /* Honey Gold: Evokes luxury, sweet delight, artisanal excellence */
+  --color-text: #2C1B18;        /* Espresso Brown: Rich chocolate tone, readable, zero-sterile finish */
+  --color-text-muted: #6E5B57;  /* Muted Espresso: Smooth secondary labels */
+  --color-surface: rgba(255, 255, 255, 0.85); /* Glassmorphic Ivory */
+  --color-surface-solid: #FFFFFF;
+  --color-card-border: rgba(44, 27, 24, 0.06);
+  --color-shadow: rgba(44, 27, 24, 0.08);
+  --color-shadow-lg: rgba(44, 27, 24, 0.12);
+
+  /* --- TYPOGRAPHY --- */
+  --font-serif: 'Lora', Georgia, serif;
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* --- BORDERS & SHADOWS --- */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 28px;
+  --radius-round: 50%;
+  
+  --shadow-sm: 0 4px 12px var(--color-shadow);
+  --shadow-md: 0 8px 24px var(--color-shadow);
+  --shadow-lg: 0 16px 40px var(--color-shadow-lg);
+
+  /* --- TRANSITIONS & ANIMATIONS --- */
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* Base custom styles to handle standard elements */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent; /* Remove mobile grey selection boxes */
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: var(--color-surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-card-border);
+}
