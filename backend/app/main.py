@@ -9,8 +9,8 @@ import uuid
 
 from app.config import settings
 from app.database import get_db
-from app.models import User, Product
-from app.schemas import UserCreate, UserResponse, UserLogin, TokenResponse, ProductResponse
+from app.models import User, Product, Order, OrderItem, DeliveryTracking
+from app.schemas import UserCreate, UserResponse, UserLogin, TokenResponse, ProductResponse, OrderCreate, OrderResponse
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user
 
 # Initialize high-performance FastAPI server
@@ -182,4 +182,149 @@ async def get_product(product_id: uuid.UUID, db: AsyncSession = Depends(get_db))
         )
         
     return product
+
+
+# --- MODULE 4: ORDER & TRANSACTION ROUTERS ---
+from sqlalchemy.orm import selectinload
+
+@app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED, tags=["Orders"])
+async def create_order(
+    order_in: OrderCreate, 
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Place a new bakery order.
+    Calculates prices server-side from PostgreSQL to prevent tampering, records transaction logs, 
+    and initializes real-time delivery tracking.
+    """
+    # 1. Fetch products to get accurate prices
+    product_ids = [item.product_id for item in order_in.items]
+    result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+    products = {p.id: p for p in result.scalars().all()}
+    
+    # Validate that all requested products exist and are available
+    for pid in product_ids:
+        if pid not in products:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Product with ID '{pid}' does not exist."
+            )
+        if not products[pid].is_available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Product '{products[pid].name}' is currently sold out."
+            )
+            
+    # 2. Compute total price and create Order ORM model
+    total_price = 0.0
+    order_items_orm = []
+    
+    # Create the Order first to get the ID
+    new_order = Order(
+        user_id=current_user.id,
+        status="pending",
+        total_price=0.0,  # Will update in a moment
+        delivery_address=order_in.delivery_address,
+        destination_lat=order_in.destination_lat,
+        destination_lng=order_in.destination_lng
+    )
+    db.add(new_order)
+    await db.flush()  # Flushes to get new_order.id
+    
+    # 3. Create individual Order Items capturing historical prices
+    for item in order_in.items:
+        prod = products[item.product_id]
+        item_price = float(prod.price)
+        total_price += item_price * item.quantity
+        
+        new_item = OrderItem(
+            order_id=new_order.id,
+            product_id=prod.id,
+            quantity=item.quantity,
+            price=item_price
+        )
+        order_items_orm.append(new_item)
+        db.add(new_item)
+        
+    # Update final computed total price
+    new_order.total_price = total_price
+    
+    # 4. Initialize real-time delivery tracking entry
+    new_tracking = DeliveryTracking(
+        order_id=new_order.id,
+        current_lat=settings.BAKERY_LAT,  # Starts at Bakery HQ
+        current_lng=settings.BAKERY_LNG,
+        eta_minutes=25,                  # Standard initial ETA
+        driver_name="Express Rider"
+    )
+    db.add(new_tracking)
+    
+    await db.commit()
+    
+    # 5. Fetch fully loaded order response with relationships using selectinload
+    result = await db.execute(
+        select(Order)
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.tracking)
+        )
+        .where(Order.id == new_order.id)
+    )
+    order_loaded = result.scalars().first()
+    return order_loaded
+
+
+@app.get("/orders/user/me", response_model=list[OrderResponse], tags=["Orders"])
+async def get_my_orders(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    Retrieve order history for the currently logged-in user.
+    """
+    result = await db.execute(
+        select(Order)
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.tracking)
+        )
+        .where(Order.user_id == current_user.id)
+        .order_by(Order.created_at.desc())
+    )
+    orders = result.scalars().all()
+    return orders
+
+
+@app.get("/orders/{order_id}", response_model=OrderResponse, tags=["Orders"])
+async def get_order_details(
+    order_id: uuid.UUID, 
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieve details of a specific order by its UUID.
+    Secured: Users can only view their own orders.
+    """
+    result = await db.execute(
+        select(Order)
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.product),
+            selectinload(Order.tracking)
+        )
+        .where(Order.id == order_id)
+    )
+    order = result.scalars().first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found."
+        )
+        
+    if order.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this order."
+        )
+        
+    return order
+
 
